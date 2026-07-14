@@ -52,6 +52,11 @@ export interface OAuthConfig {
   callbackPort?: number;
   /** Optional: explicit list of ports to try in order (overrides default fallback) */
   callbackPorts?: number[];
+  /**
+   * Whether to automatically open the authorization URL in the system's
+   * default browser once it is ready. Defaults to `true`.
+   */
+  autoOpenBrowser?: boolean;
 }
 
 /**
@@ -568,6 +573,22 @@ export async function loadConfig(
             }),
           );
         }
+      }
+
+      // Validate autoOpenBrowser if specified
+      if (
+        oauth.autoOpenBrowser !== undefined &&
+        typeof oauth.autoOpenBrowser !== 'boolean'
+      ) {
+        throw new Error(
+          formatCliError({
+            code: ErrorCode.CLIENT_ERROR,
+            type: 'CONFIG_INVALID_OAUTH',
+            message: `Invalid autoOpenBrowser for server "${serverName}"`,
+            details: 'autoOpenBrowser must be a boolean',
+            suggestion: `Use "autoOpenBrowser": false to disable automatic browser launch`,
+          }),
+        );
       }
     }
   }

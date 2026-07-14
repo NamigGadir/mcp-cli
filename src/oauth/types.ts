@@ -15,6 +15,14 @@ export interface OAuthConfig {
   callbackPort?: number;
   /** Optional: explicit list of ports to try in order (overrides default fallback) */
   callbackPorts?: number[];
+  /**
+   * Whether to automatically open the authorization URL in the system's
+   * default browser once it is ready. Defaults to `true`. Set to `false`
+   * to keep the previous non-interactive behavior (URL is only captured/
+   * printed, never opened automatically) - useful for headless/CI/agent
+   * environments without a usable display.
+   */
+  autoOpenBrowser?: boolean;
 }
 
 /**

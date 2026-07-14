@@ -2,7 +2,7 @@
  * Unit tests for OAuth module
  */
 
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterEach, spyOn } from 'bun:test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -435,6 +435,58 @@ describe('oauth', () => {
         const provider = new McpCliOAuthProvider('test', 'https://example.com', config);
 
         expect(provider.redirectUrl).toBe('http://localhost:8080/callback');
+      });
+    });
+
+    describe('redirectToAuthorization', () => {
+      test('captures the authorization URL', () => {
+        const config: OAuthConfig = { callbackPort: 8123, autoOpenBrowser: false };
+        const provider = new McpCliOAuthProvider('test', 'https://example.com', config);
+
+        provider.redirectToAuthorization(
+          new URL('https://example.com/authorize?client_id=abc'),
+        );
+
+        expect(provider.capturedAuthUrl).not.toBeNull();
+        expect(provider.capturedAuthUrl).toContain('https://example.com/authorize');
+        expect(provider.capturedAuthUrl).toContain('redirect_uri=');
+      });
+
+      test('opens the browser automatically by default', async () => {
+        const openBrowserModule = await import('../src/oauth/browser');
+        const openBrowserSpy = spyOn(openBrowserModule, 'openBrowser').mockResolvedValue(
+          undefined,
+        );
+
+        const config: OAuthConfig = { callbackPort: 8124 };
+        const provider = new McpCliOAuthProvider('test', 'https://example.com', config);
+
+        provider.redirectToAuthorization(
+          new URL('https://example.com/authorize?client_id=abc'),
+        );
+
+        expect(openBrowserSpy).toHaveBeenCalledTimes(1);
+        expect(openBrowserSpy).toHaveBeenCalledWith(provider.capturedAuthUrl);
+
+        openBrowserSpy.mockRestore();
+      });
+
+      test('does not open the browser when autoOpenBrowser is false', async () => {
+        const openBrowserModule = await import('../src/oauth/browser');
+        const openBrowserSpy = spyOn(openBrowserModule, 'openBrowser').mockResolvedValue(
+          undefined,
+        );
+
+        const config: OAuthConfig = { callbackPort: 8125, autoOpenBrowser: false };
+        const provider = new McpCliOAuthProvider('test', 'https://example.com', config);
+
+        provider.redirectToAuthorization(
+          new URL('https://example.com/authorize?client_id=abc'),
+        );
+
+        expect(openBrowserSpy).not.toHaveBeenCalled();
+
+        openBrowserSpy.mockRestore();
       });
     });
 

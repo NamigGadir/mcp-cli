@@ -184,7 +184,9 @@ export class McpCliOAuthProvider implements OAuthClientProvider {
 
   /**
    * Redirect to authorization URL
-   * Captures auth URL for AI agents - never opens browser
+   * Captures auth URL for AI agents and automatically opens it in the
+   * system's default browser so a human can complete the login without
+   * having to copy/paste the link manually.
    * Background callback server is already pre-started
    */
   redirectToAuthorization(authorizationUrl: URL): void {
@@ -205,6 +207,16 @@ export class McpCliOAuthProvider implements OAuthClientProvider {
 
     // Background server is already pre-started (from preStartCallbackServer)
     // It will continue running for the timeout period (default 5 min)
+
+    // Auto-launch the default browser unless explicitly disabled.
+    // Fire-and-forget: openBrowser() already logs/handles failures
+    // internally (falling back to printing the URL), so we never block
+    // or throw here - the captured URL remains available regardless.
+    if (this.oauthConfig.autoOpenBrowser !== false) {
+      openBrowser(this._capturedAuthUrl).catch(() => {
+        // Failure already logged by openBrowser; nothing else to do.
+      });
+    }
   }
 
   /**

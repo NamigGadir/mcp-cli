@@ -69,7 +69,8 @@ export class AuthRequiredError extends Error {
   constructor(serverName: string, authUrl?: string) {
     const message = authUrl
       ? `[AUTH REQUIRED] ${serverName}
-  Authenticate at: ${authUrl}
+  Opening browser to authenticate: ${authUrl}
+  (If it doesn't open automatically, copy/paste the URL above.)
   Callback server running in background (5 min timeout).
   After authenticating, confirm "done" and retry this command.`
       : `Server "${serverName}" requires authentication. Run 'mcp-cli info ${serverName}' to start authentication.`;

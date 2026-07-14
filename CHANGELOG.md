@@ -4,6 +4,10 @@
 
 ### Added
 
+- **Automatic Browser Launch for OAuth**
+  - The authorization URL is now opened automatically in the system's default browser (`open`/`xdg-open`/`start`) as soon as it's ready
+  - New `oauth.autoOpenBrowser` config option (default `true`) to disable this for headless/CI environments
+  - URL is still captured/printed as before, so AI agents can surface it if the browser can't be opened automatically
 - **Non-Blocking OAuth Flow for AI Agents**
   - `AuthRequiredError` now includes authorization URL for immediate action
   - Callback server runs in background (5 min timeout) - CLI returns immediately

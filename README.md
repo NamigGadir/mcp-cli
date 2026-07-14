@@ -350,14 +350,19 @@ sequenceDiagram
     AI->>CLI: mcp-cli
     CLI->>CLI: Detect some servers need auth
     CLI->>Server: Spawn background callback server
+    CLI->>User: Auto-opens auth URL in default browser
     CLI-->>AI: List working servers + auth URL for others
-    AI->>User: "Please authenticate via this link"
     User->>Server: Completes OAuth in browser
     Server->>Server: Saves tokens to ~/.mcp-cli/tokens/
     User->>AI: "Done"
     AI->>CLI: mcp-cli (retry)
     CLI-->>AI: All servers now listed
 ```
+
+The authorization URL is automatically opened in the system's default
+browser (`open` on macOS, `xdg-open` on Linux, `start` on Windows) as soon
+as it's ready, so you usually don't need to copy/paste anything - just
+complete the login/consent screen that pops up.
 
 **Configuration:**
 
@@ -401,6 +406,7 @@ For servers requiring custom OAuth settings, use the `oauth` object:
 | `clientSecret` | OAuth client secret (for confidential clients) | (none) |
 | `scope` | OAuth scopes to request | (none) |
 | `grantType` | `authorization_code` or `client_credentials` | `authorization_code` |
+| `autoOpenBrowser` | Automatically open the auth URL in the default browser | `true` |
 
 **Examples by scenario:**
 
@@ -431,6 +437,16 @@ For servers requiring custom OAuth settings, use the `oauth` object:
       "clientSecret": "secret-key",
       "grantType": "client_credentials"
     }
+  }
+}
+```
+
+4. **Headless/CI environment (disable auto-open browser):**
+```json
+{
+  "notion": {
+    "url": "https://mcp.notion.com/mcp",
+    "oauth": { "autoOpenBrowser": false }
   }
 }
 ```
