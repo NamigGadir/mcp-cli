@@ -32,6 +32,7 @@ import {
   unknownOptionError,
   unknownSubcommandError,
 } from './errors.js';
+import { hasPendingOAuth } from './oauth/pending.js';
 import { VERSION } from './version.js';
 
 interface ParsedArgs {
@@ -464,11 +465,22 @@ process.on('SIGTERM', () => {
 // Run
 main()
   .then(() => {
+    if (hasPendingOAuth()) {
+      // A background OAuth callback server is still waiting for the user to
+      // finish authenticating in the browser. Don't force-exit - let the
+      // event loop stay alive (kept open by the server's listening socket)
+      // until the flow completes or its 5 minute timeout elapses.
+      return;
+    }
     // Use setImmediate to let stdout flush before exiting
     setImmediate(() => process.exit(0));
   })
   .catch((error) => {
     // Error message already formatted by command handlers
     console.error(error.message);
+    if (hasPendingOAuth()) {
+      process.exitCode = ErrorCode.CLIENT_ERROR;
+      return;
+    }
     setImmediate(() => process.exit(ErrorCode.CLIENT_ERROR));
   });

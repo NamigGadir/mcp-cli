@@ -2,7 +2,10 @@
  * MCP Client - Connection management for MCP servers
  */
 
-import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
+import {
+  UnauthorizedError,
+  auth,
+} from '@modelcontextprotocol/sdk/client/auth.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -28,6 +31,7 @@ import {
 } from './daemon-client.js';
 import { formatCliError, oauthFlowError } from './errors.js';
 import { McpCliOAuthProvider } from './oauth/index.js';
+import { registerPendingOAuth } from './oauth/pending.js';
 import { VERSION } from './version.js';
 
 // Re-export config utilities for convenience
@@ -315,6 +319,34 @@ export async function connectToServer(
     } catch (error) {
       if (isOAuthNeeded(error as Error) && authProvider) {
         debug(`OAuth authorization required for ${serverName}`);
+
+        // Fire-and-forget: finish the OAuth flow once the user completes
+        // authentication in the browser. This is what actually consumes the
+        // callback server's captured code and exchanges it for tokens -
+        // without it, the callback server would receive the redirect but
+        // nothing would ever save the resulting tokens.
+        // Registered so command handlers know to keep the process alive
+        // (the open callback server socket does this naturally) instead of
+        // force-exiting right after this error is reported.
+        const serverUrl = (config as HttpServerConfig).url;
+        const completion = authProvider
+          .waitForCallback()
+          .then(async (result) => {
+            debug(
+              `Authorization code received for ${serverName}, exchanging for tokens`,
+            );
+            await auth(authProvider as McpCliOAuthProvider, {
+              serverUrl,
+              authorizationCode: result.code,
+            });
+            debug(`OAuth flow completed for ${serverName} - tokens saved`);
+          })
+          .catch((completionError) => {
+            debug(
+              `OAuth flow failed for ${serverName}: ${(completionError as Error).message}`,
+            );
+          });
+        registerPendingOAuth(completion);
 
         // Always throw AuthRequiredError with auth URL - CLI is for AI agents
         // Callback server continues running in background for 5 min

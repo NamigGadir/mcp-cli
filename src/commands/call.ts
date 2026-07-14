@@ -29,6 +29,7 @@ import {
   toolExecutionError,
   toolNotFoundError,
 } from '../errors.js';
+import { hasPendingOAuth } from '../oauth/pending.js';
 import { formatJson } from '../output.js';
 
 export interface CallOptions {
@@ -155,6 +156,14 @@ export async function callCommand(options: CallOptions): Promise<void> {
         serverConnectionError(serverName, (error as Error).message),
       ),
     );
+    if (hasPendingOAuth()) {
+      // Don't force-exit - a background callback server is still waiting
+      // for the OAuth redirect. Letting the event loop run naturally (kept
+      // alive by the server's open socket) allows the token exchange to
+      // complete once the user finishes authenticating.
+      process.exitCode = ErrorCode.NETWORK_ERROR;
+      return;
+    }
     process.exit(ErrorCode.NETWORK_ERROR);
   }
 
