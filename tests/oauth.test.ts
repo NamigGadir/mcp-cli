@@ -12,6 +12,7 @@ describe('oauth', () => {
   // Use a unique temp directory for each test run to avoid conflicts
   let testDir: string;
   const originalMcpCliHome = process.env.MCP_CLI_HOME;
+  const originalDisableKeychain = process.env.MCP_CLI_DISABLE_KEYCHAIN;
 
   beforeEach(() => {
     // Create unique test directory for each test
@@ -19,6 +20,9 @@ describe('oauth', () => {
     mkdirSync(testDir, { recursive: true });
     // Use MCP_CLI_HOME env var to override storage location
     process.env.MCP_CLI_HOME = testDir;
+    // Force file-based token storage so these tests never touch the real
+    // macOS Keychain (Keychain-specific behavior is covered in keychain.test.ts)
+    process.env.MCP_CLI_DISABLE_KEYCHAIN = '1';
   });
 
   afterEach(() => {
@@ -27,6 +31,13 @@ describe('oauth', () => {
       delete process.env.MCP_CLI_HOME;
     } else {
       process.env.MCP_CLI_HOME = originalMcpCliHome;
+    }
+
+    // Restore original MCP_CLI_DISABLE_KEYCHAIN
+    if (originalDisableKeychain === undefined) {
+      delete process.env.MCP_CLI_DISABLE_KEYCHAIN;
+    } else {
+      process.env.MCP_CLI_DISABLE_KEYCHAIN = originalDisableKeychain;
     }
 
     // Clean up test directory
@@ -265,6 +276,47 @@ describe('oauth', () => {
         const provider2 = new McpCliOAuthProvider('test', 'https://example.com', config);
         const loaded = provider2.tokens();
         expect(loaded?.access_token).toBe('persisted-token');
+      });
+
+      test('prefers Keychain storage on macOS and migrates legacy plaintext files', async () => {
+        const originalDisable = process.env.MCP_CLI_DISABLE_KEYCHAIN;
+        delete process.env.MCP_CLI_DISABLE_KEYCHAIN;
+
+        const store = new Map<string, string>();
+        const keychain = await import('../src/oauth/keychain');
+        const readSpy = spyOn(keychain, 'keychainRead').mockImplementation((server: string) =>
+          store.get(server),
+        );
+        const writeSpy = spyOn(keychain, 'keychainWrite').mockImplementation(
+          (server: string, secret: string) => {
+            store.set(server, secret);
+            return true;
+          },
+        );
+        const supportedSpy = spyOn(keychain, 'isKeychainSupported').mockReturnValue(true);
+
+        try {
+          const config: OAuthConfig = {};
+          const provider = new McpCliOAuthProvider('kc-test', 'https://example.com', config);
+
+          provider.saveTokens({ access_token: 'kc-token', token_type: 'Bearer' });
+
+          // Token should have gone to the (mocked) Keychain, not a plaintext file.
+          expect(store.get('kc-test')).toContain('kc-token');
+          expect(existsSync(provider['paths'].tokens)).toBe(false);
+
+          const loaded = provider.tokens();
+          expect(loaded?.access_token).toBe('kc-token');
+        } finally {
+          readSpy.mockRestore();
+          writeSpy.mockRestore();
+          supportedSpy.mockRestore();
+          if (originalDisable === undefined) {
+            delete process.env.MCP_CLI_DISABLE_KEYCHAIN;
+          } else {
+            process.env.MCP_CLI_DISABLE_KEYCHAIN = originalDisable;
+          }
+        }
       });
     });
 

@@ -15,6 +15,12 @@ import { debug } from '../config.js';
 import { openBrowser } from './browser.js';
 import { startCallbackServerWithFallback } from './callback-server.js';
 import {
+  isKeychainSupported,
+  keychainDelete,
+  keychainRead,
+  keychainWrite,
+} from './keychain.js';
+import {
   deleteFile,
   ensureDir,
   getServerPaths,
@@ -161,17 +167,59 @@ export class McpCliOAuthProvider implements OAuthClientProvider {
   }
 
   /**
-   * Load OAuth tokens
+   * Load OAuth tokens.
+   *
+   * On macOS, tokens live in the login Keychain (encrypted at rest, OS-gated
+   * access) rather than a plaintext file. If a legacy plaintext token file
+   * exists from a previous version, it is transparently migrated into the
+   * Keychain and then removed from disk.
    */
   tokens(): OAuthTokens | undefined {
+    if (isKeychainSupported()) {
+      const raw = keychainRead(this.serverName);
+      if (raw) {
+        try {
+          return JSON.parse(raw) as OAuthTokens;
+        } catch (error) {
+          debug(
+            `Failed to parse Keychain tokens for ${this.serverName}: ${(error as Error).message}`,
+          );
+        }
+      }
+
+      // Migrate any legacy plaintext token file into the Keychain.
+      const legacy = readJsonFile<OAuthTokens>(this.paths.tokens);
+      if (legacy) {
+        debug(
+          `Migrating plaintext tokens for ${this.serverName} into macOS Keychain`,
+        );
+        if (keychainWrite(this.serverName, JSON.stringify(legacy))) {
+          deleteFile(this.paths.tokens);
+        }
+        return legacy;
+      }
+      return undefined;
+    }
+
     return readJsonFile<OAuthTokens>(this.paths.tokens);
   }
 
   /**
-   * Save OAuth tokens
+   * Save OAuth tokens.
+   *
+   * Prefers the macOS Keychain; falls back to the plaintext token file if
+   * Keychain storage is unavailable or the `security` call fails.
    */
   saveTokens(tokens: OAuthTokens): void {
     debug(`Saving tokens for ${this.serverName}`);
+    if (
+      isKeychainSupported() &&
+      keychainWrite(this.serverName, JSON.stringify(tokens))
+    ) {
+      // Ensure no stale plaintext copy is left behind on disk.
+      deleteFile(this.paths.tokens);
+      return;
+    }
     writeJsonFile(this.paths.tokens, tokens);
   }
 
@@ -294,6 +342,7 @@ export class McpCliOAuthProvider implements OAuthClientProvider {
     switch (scope) {
       case 'all':
         deleteFile(this.paths.tokens);
+        keychainDelete(this.serverName);
         deleteFile(this.paths.client);
         deleteFile(this.paths.verifier);
         break;
@@ -302,6 +351,7 @@ export class McpCliOAuthProvider implements OAuthClientProvider {
         break;
       case 'tokens':
         deleteFile(this.paths.tokens);
+        keychainDelete(this.serverName);
         break;
       case 'verifier':
         deleteFile(this.paths.verifier);
